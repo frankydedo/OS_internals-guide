@@ -9,6 +9,7 @@
   - [Implementation](#implementation)
     - [Lock](#lock)
     - [Condition variable](#condition-variable)
+- [LAB 4 - waitpid](#lab-4)
 
 # LAB 1 - Options
 
@@ -84,37 +85,37 @@ Follow these steps to create a new config. For the sake of simplicity, we’ll u
           # Kernel config file using dumbvm.
           # This should be used until you have your own VM system.
 
-          include conf/conf.kern		# get definitions of available options
+          include conf/conf.kern  # get definitions of available options
 
-          debug				# Compile with debug info and -Og.
-          #debugonly			# Compile with debug info only (no -Og).
-          #options hangman 		# Deadlock detection. (off by default)
+          debug    # Compile with debug info and -Og.
+          #debugonly   # Compile with debug info only (no -Og).
+          #options hangman   # Deadlock detection. (off by default)
 
           #
           # Device drivers for hardware.
           #
-          device lamebus0			# System/161 main bus
-          device emu* at lamebus*		# Emulator passthrough filesystem
-          device ltrace* at lamebus*	# trace161 trace control device
-          device ltimer* at lamebus*	# Timer device
-          device lrandom* at lamebus*	# Random device
-          device lhd* at lamebus*		# Disk device
-          device lser* at lamebus*	# Serial port
-          #device lscreen* at lamebus*	# Text screen (not supported yet)
-          #device lnet* at lamebus*	# Network interface (not supported yet)
-          device beep0 at ltimer*		# Abstract beep handler device
-          device con0 at lser*		# Abstract console on serial port
-          #device con0 at lscreen*	# Abstract console on screen (not supported)
-          device rtclock0 at ltimer*	# Abstract realtime clock
-          device random0 at lrandom*	# Abstract randomness device
+          device lamebus0   # System/161 main bus
+          device emu* at lamebus*  # Emulator passthrough filesystem
+          device ltrace* at lamebus* # trace161 trace control device
+          device ltimer* at lamebus* # Timer device
+          device lrandom* at lamebus* # Random device
+          device lhd* at lamebus*  # Disk device
+          device lser* at lamebus* # Serial port
+          #device lscreen* at lamebus* # Text screen (not supported yet)
+          #device lnet* at lamebus* # Network interface (not supported yet)
+          device beep0 at ltimer*  # Abstract beep handler device
+          device con0 at lser*  # Abstract console on serial port
+          #device con0 at lscreen* # Abstract console on screen (not supported)
+          device rtclock0 at ltimer* # Abstract realtime clock
+          device random0 at lrandom* # Abstract randomness device
 
-          #options net			# Network stack (not supported)
-          options semfs			# Semaphores for userland
+          #options net   # Network stack (not supported)
+          options semfs   # Semaphores for userland
 
-          options sfs			# Always use the file system
-          #options netfs			# You might write this as a project.
+          options sfs   # Always use the file system
+          #options netfs   # You might write this as a project.
 
-          options dumbvm			# Chewing gum and baling wire.
+          options dumbvm   # Chewing gum and baling wire.
 
 
           ###############lab_1################
@@ -263,11 +264,11 @@ STEPS:
 
       // sys_write
 
-      	// Arguments:
+       // Arguments:
 
-      	// 1st -> fd: file descriptor (1 per stdout, 2 per stderr)
-      	// 2nd -> buf: buffer da scrivere
-      	// 3rd -> nbytes: numero di byte da scrivere
+       // 1st -> fd: file descriptor (1 per stdout, 2 per stderr)
+       // 2nd -> buf: buffer da scrivere
+       // 3rd -> nbytes: numero di byte da scrivere
 
       case SYS_write:
       err = sys_write(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2);
@@ -275,11 +276,11 @@ STEPS:
 
       // sys_read
 
-      	// Arguments:
+       // Arguments:
 
-      	// 1st -> fd: file descriptor (1 per stdout, 2 per stderr)
-      	// 2nd -> buf: buffer da scrivere
-      	// 3rd -> nbytes: numero di byte da scrivere
+       // 1st -> fd: file descriptor (1 per stdout, 2 per stderr)
+       // 2nd -> buf: buffer da scrivere
+       // 3rd -> nbytes: numero di byte da scrivere
 
       case SYS_read:
       err = sys_read(tf->tf_a0, (userptr_t)tf->tf_a1, tf->tf_a2);
@@ -747,27 +748,27 @@ In OS161, condition variables are implemented with:
 The structure is defined in synch.h:
 
         struct cv {
-        char *cv_name;
-        struct wchan *cv_wchan;
-        struct spinlock cv_lock;
+                char *cv_name;
+                struct wchan *cv_wchan;
+                struct spinlock cv_lock;
         };
 
 - _cv_wait()_
 
-1.  Atomically releases the associated lock.
-2.  Puts the thread to sleep on the CV’s wait channel.
-3.  Re-acquires the lock when the thread wakes up.
+1. Atomically releases the associated lock.
+2. Puts the thread to sleep on the CV’s wait channel.
+3. Re-acquires the lock when the thread wakes up.
 
         void cv_wait(struct cv *cv, struct lock *lock) {
-        KASSERT(cv != NULL);
-        KASSERT(lock != NULL);
-        KASSERT(lock_do_i_hold(lock));
+                KASSERT(cv != NULL);
+                KASSERT(lock != NULL);
+                KASSERT(lock_do_i_hold(lock));
 
-        spinlock_acquire(&cv->cv_lock);
-        lock_release(lock);
-        wchan_sleep(cv->cv_wchan, &cv->cv_lock);
-        spinlock_release(&cv->cv_lock);
-        lock_acquire(lock);
+                spinlock_acquire(&cv->cv_lock);
+                lock_release(lock);
+                wchan_sleep(cv->cv_wchan, &cv->cv_lock);
+                spinlock_release(&cv->cv_lock);
+                lock_acquire(lock);
         }
 
 - _cv_signal()_
@@ -1154,3 +1155,46 @@ Here we only need the same configuration that we should already have implemented
                 (void)cv;    // suppress warning until code gets written
                 (void)lock;  // suppress warning until code gets written
         }
+
+# LAB 4
+
+Up to this point, our os161 implementation is not actually capable of terminating properly the execution of a thread. In fact, as it stands, nobody is in charge of cleaning up all the data structures allocated by that process, which therefore remains in **zombie state**.
+
+Our goal now is to address this problem, implementing the **waitpid** syscall, whose purpose is to let a process P1 wait for P2 with a given **PID** to finish. To achieve this goal we need to implement a **process table** to keep tack of all the processes currently running.
+
+First let's clear a crucial point: the function actually in charge of waiting is _**proc_wait()**_ and **not _waitpid()_**. BUT _proc_wait()_ is a kernel function, which means it cannot be called by a user process, and here is where _waitpid()_ comes in handy, which via _sys_waitpid()_ syscall is able to call _proc_wait()_.
+
+This implies that if the father process is actually a kernel thread, we won't need to call _waitpid()_, instead we'll directly call _proc_wait()_.
+
+![Alt text](assets/proc_wait_flow.png)
+
+In this scheme we can see the entire flow that allows a kernel thread to wait for a user process to ha ve finished:
+
+- _common_prog()_ creates a new thread and directly calls _proc_wait(proc)_.
+  - _proc_wait()_ is now waiting thanks to a cv or a semaphore.
+- meanwhile _runprogram()_, and therefore _enter_new_process()_, has been called, so we're now in user mode.
+- the moment our user process calls _exit(0)_, _sys__exit(stuatus)_ gets triggered and signals the semaphore/cv before calling _thread_exit()_.
+- _proc_wait()_ wakes up and can now destroy user process.
+
+The only exception to this flow, as already said, is when the father is a user process. In this case, after having created a new process, it must call _waitpid()_.
+
+**KERNEL CREATING A NEW PROCESS**
+
+        common_prog(const char *progname) {
+                struct proc *p = proc_create_runprogram(progname);   // creates user process
+                thread_fork(..., p, cmd_progthread, ...);            // throws thread
+                proc_wait(p);                                        // waits
+        }
+
+**USER CREATING A NEW PROCESS**
+
+        pid_t pid = fork();
+        if (pid == 0) {
+                // son
+                execv("prog", args);
+        } else {
+                // father
+                waitpid(pid, &status, 0); // waits
+        }
+
+NB: a user process creates a new process via _fork()_, not _proc_create_runprogram().
